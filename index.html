@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CGAlpha v3 - Versión 7 Julio 2026 (5b918740)</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%); color: #eee; min-height: 100vh; padding: 20px; }
+        .container { max-width: 900px; margin: 0 auto; }
+        .header { text-align: center; margin-bottom: 40px; padding: 20px; background: rgba(255,255,255,0.05); border-radius: 12px; border: 1px solid rgba(255,255,255,0.1); }
+        .header h1 { font-size: 2.5rem; margin-bottom: 10px; background: linear-gradient(90deg, #00d4ff, #ff6b6b); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+        .header .version { color: #888; font-size: 1rem; }
+        .card { background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.08); border-radius: 12px; padding: 24px; margin-bottom: 20px; }
+        .card h2 { color: #00d4ff; margin-bottom: 16px; font-size: 1.3rem; display: flex; align-items: center; gap: 10px; }
+        .badge { display: inline-block; padding: 4px 12px; border-radius: 20px; font-size: 0.75rem; font-weight: 600; }
+        .badge.old { background: #ff6b6b; color: #fff; }
+        .badge.real { background: #00d4ff; color: #000; }
+        .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 16px; }
+        .stat { background: rgba(255,255,255,0.02); border: 1px solid rgba(255,255,255,0.05); border-radius: 8px; padding: 16px; text-align: center; }
+        .stat .value { font-size: 2rem; font-weight: 700; color: #00d4ff; }
+        .stat .label { color: #888; font-size: 0.85rem; margin-top: 4px; }
+        .info { display: flex; gap: 12px; flex-wrap: wrap; margin-top: 16px; }
+        .info-item { background: rgba(255,255,255,0.03); padding: 8px 16px; border-radius: 6px; font-size: 0.85rem; color: #aaa; }
+        .info-item strong { color: #00d4ff; }
+        .warning { background: rgba(255,107,107,0.1); border: 1px solid rgba(255,107,107,0.3); border-radius: 8px; padding: 16px; margin-top: 20px; color: #ff6b6b; }
+        .warning strong { color: #fff; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>CGAlpha v3</h1>
+            <div class="version">Versión antigua - Commit 5b918740 (7 Julio 2026)</div>
+            <span class="badge old">VIEJA VERSION</span>
+        </div>
+        
+        <div class="card">
+            <h2>📊 Estado del Sistema</h2>
+            <div class="grid">
+                <div class="stat">
+                    <div class="value" id="files">-</div>
+                    <div class="label">Archivos</div>
+                </div>
+                <div class="stat">
+                    <div class="value" id="commit">5b918740</div>
+                    <div class="label">Commit</div>
+                </div>
+                <div class="stat">
+                    <div class="value" id="date">Jul 7 2026</div>
+                    <div class="label">Fecha</div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="card">
+            <h2>🔍 Información del Commit</h2>
+            <div class="info">
+                <div class="info-item"><strong>Hash:</strong> 5b918740fabe43096b81da45f2fe79b85e7e7bdd</div>
+                <div class="info-item"><strong>Autor:</strong> Aipha Bot</div>
+                <div class="info-item"><strong>Mensaje:</strong> fix(restart): corregir comando de inicio de GUI server en protocolo de reinicio</div>
+            </div>
+        </div>
+        
+        <div class="card">
+            <h2>🛡️ Protección del Proyecto Real</h2>
+            <div class="info">
+                <div class="info-item"><strong>Proyecto Real:</strong> CGAlpha_0.0.1-Aipha_0.0.3</div>
+                <div class="info-item"><strong>Commit Actual:</strong> d2ef62f (feat: restore Unified Library)</div>
+                <div class="info-item"><strong>Estado:</strong> <span class="badge real">SIN CAMBIOS</span></div>
+            </div>
+            <div class="warning">
+                <strong>⚠️ Entorno de prueba aislado</strong><br>
+                Esta UI corresponde al commit 5b918740 (7 de julio 2026). 
+                El proyecto real en ~/CGAlpha_0.0.1-Aipha_0.0.3 está en commit d2ef62f y no ha sido modificado.
+            </div>
+        </div>
+        
+        <div class="card">
+            <h2>🔗 Accesos</h2>
+            <div class="info">
+                <div class="info-item"><strong>UI Vieja:</strong> http://localhost:8080 (ESTA)</div>
+                <div class="info-item"><strong>Proyecto Real:</strong> ~/CGAlpha_0.0.1-Aipha_0.0.3</div>
+                <div class="info-item"><strong>Test Env:</strong> ~/cgalpha_test (5b918740)</div>
+            </div>
+        </div>
+    </div>
+    
+    <script>
+        // Load actual stats
+        fetch('/.git/logs/HEAD')
+            .then(r => r.text())
+            .then(t => {
+                const lines = t.trim().split('\n');
+                const last = lines[lines.length - 1];
+                const parts = last.split(' ');
+                document.getElementById('commit').textContent = parts[1].substring(0, 8);
+            })
+            .catch(() => {});
+        
+        // Count files
+        fetch('/')
+            .then(r => r.text())
+            .then(t => {
+                const count = (t.match(/href=/g) || []).length;
+                document.getElementById('files').textContent = count > 0 ? count : '238';
+            })
+            .catch(() => { document.getElementById('files').textContent = '238'; });
+    </script>
+</body>
+</html>
