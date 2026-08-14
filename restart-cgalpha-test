@@ -151,8 +151,9 @@ echo ""
 echo "=== PASO 6: Final Verification ==="
 
 echo "PROCESOS:"
-PROCESS_COUNT=$(ps aux | grep -E "python.*(cgalpha|harness)" | grep -v grep | wc -l)
-ps aux | grep -E "python.*(cgalpha|harness)" | grep -v grep
+# Only count processes from THIS repo (cgalpha_test)
+PROCESS_COUNT=$(ps aux | grep "cgalpha_test" | grep -E "python.*(cgalpha|harness)" | grep -v grep | wc -l)
+ps aux | grep "cgalpha_test" | grep -E "python.*(cgalpha|harness)" | grep -v grep
 echo "Count: $PROCESS_COUNT"
 
 echo ""
