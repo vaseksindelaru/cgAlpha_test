@@ -1458,9 +1458,12 @@ class TripleCoincidenceDetector:
             timed_out = age_ms > timeout_ms
 
             # Index-based expiry (only meaningful within the same run)
+            # Bootstrap zones have candle_index from historical data (e.g. 225, 469)
+            # which is incompatible with live _kline_buffer indices (starting at 0).
+            # Skip index check for negative index_age (cross-run zones).
             if current_idx is not None:
                 index_age = current_idx - z.candle_index
-                index_in_range = 0 <= index_age < timeout_bars
+                index_in_range = index_age < 0 or 0 <= index_age < timeout_bars
             else:
                 index_in_range = True
 
@@ -1481,7 +1484,9 @@ class TripleCoincidenceDetector:
             is_harvesting = z.lifecycle_state == ZoneLifecycleState.HARVESTING
 
             if is_harvesting:
-                if timed_out or price_too_far:
+                # Use harvest_expiry_ts (48h from breakout) for harvesting zones
+                harvest_expired = current_timestamp_ms > getattr(z, 'harvest_expiry_ts', 0)
+                if harvest_expired or price_too_far:
                     continue
                 kept.append(z)
             elif not timed_out and index_in_range and not price_too_far:

@@ -168,6 +168,13 @@ def bootstrap_detector(detector, symbol: str = "BTCUSDT", interval: str = BOOTST
 
     if report["zones_total"] == 0:
         logger.warning("Bootstrap: 0 zonas activas tras el warm-up. El LiveAdapter esperará a que el detector las construya con los ticks del WebSocket.")
+    else:
+        # Fix: reset detection_timestamp to NOW so _cleanup_expired_zones
+        # doesn't immediately expire zones that were detected on historical candles.
+        now_ms = int(time.time() * 1000)
+        for z in detector.active_zones:
+            z.detection_timestamp = now_ms
+        logger.info(f"Bootstrap: {report['zones_total']} zonas re-timestamped to NOW ({now_ms}) para evitar expiry inmediato.")
 
     return report
 

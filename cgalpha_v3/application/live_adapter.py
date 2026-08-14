@@ -104,6 +104,12 @@ class LiveDataFeedAdapter(BaseComponentV3):
         self._bypass_disable_full_target = int(
             os.environ.get("CGALPHA_BYPASS_DISABLE_AT_FULL", "50")
         )
+
+        # GUI-mode adapter: when True, this adapter does NOT write active_zones.json.
+        # Only the shadow trader process should write; GUI server reads passively.
+        self._gui_readonly = os.environ.get(
+            "CGALPHA_GUI_READONLY", "0"
+        ).lower() in {"1", "true", "yes"}
         self._set_a_min_bounce = int(os.environ.get("CGALPHA_SET_A_MIN_BOUNCE", "8"))
         self._set_a_min_breakout = int(
             os.environ.get("CGALPHA_SET_A_MIN_BREAKOUT", "16")
@@ -624,8 +630,12 @@ class LiveDataFeedAdapter(BaseComponentV3):
         """
         Persiste el estado del detector y las zonas activas en disco.
         Usa ruta ABSOLUTA para garantizar que el servidor GUI lea el mismo archivo.
+        GUI-readonly adapters skip writing — only the shadow trader owns the file.
         """
+        if getattr(self, "_gui_readonly", False):
+            return
         try:
+            import traceback as _tb
             # 1. El detector guarda su estado completo (para auto-recuperación térmica)
             if hasattr(self.detector, "save_state"):
                 self.detector.save_state()
@@ -639,6 +649,7 @@ class LiveDataFeedAdapter(BaseComponentV3):
             path = project_root / "aipha_memory" / "operational" / "active_zones.json"
             path.parent.mkdir(parents=True, exist_ok=True)
             zones_data = []
+            n_detector_zones = len(self.detector.active_zones)
             for z in self.detector.active_zones:
                 effective_dir = (
                     ("bearish" if z.direction == "bullish" else "bullish")
@@ -667,8 +678,16 @@ class LiveDataFeedAdapter(BaseComponentV3):
                     }
                 )
             try:
+                # GUARD: never overwrite a non-empty file with [] unless detector truly has 0 zones
+                if len(zones_data) == 0 and n_detector_zones > 0:
+                    caller = _tb.format_stack(limit=6)[-3].strip()
+                    logger.warning(f"⚠️ [PERSIST] SKIPPING write of [] — detector still has {n_detector_zones} zones! Caller: {caller}")
+                    return
                 with open(path, "w") as f:
                     json.dump(zones_data, f, indent=2)
+                if len(zones_data) == 0 and n_detector_zones > 0:
+                    caller = _tb.format_stack(limit=6)[-3].strip()
+                    logger.warning(f"⚠️ [PERSIST] zones_data=[] but detector had {n_detector_zones} zones! Caller: {caller}")
                 logger.info(
                     f"💾 Zonas GUI persistidas: {len(zones_data)} zonas → {path}"
                 )
@@ -687,7 +706,19 @@ class LiveDataFeedAdapter(BaseComponentV3):
 
                 print(f"🔴 CRITICAL IO_ZONES: {e}", file=sys.stderr, flush=True)
 
-            # 3. Persist current market price for GUI dashboard
+            # 4. Persist live signals for GUI dashboard (shadow trader's signals)
+            safe_symbol = self.symbol.replace("/", "_").upper()
+            signals_path = (
+                project_root
+                / "aipha_memory"
+                / "operational"
+                / f"live_signals_{safe_symbol}.json"
+            )
+            try:
+                with open(signals_path, "w") as f:
+                    json.dump(self.live_signals[-50:], f, indent=2)
+            except (TypeError, IOError) as e:
+                logger.warning(f"⚠️ [PERSIST_SIGNALS] Failed: {e}")
             #    Archivo separado por símbolo para evitar condición de carrera
             #    entre adaptadores multi-asset (BTC vs ETH).
             if self.current_kline and self.current_kline.get("close"):

@@ -1,0 +1,236 @@
+#!/usr/bin/env bash
+# restart-cgalpha-test: Complete CGAlpha v3 TEST env restart with cloud + GUI + Watchdog verification
+# Usage: restart-cgalpha-test
+# This function works with ~/cgalpha_test/ environment
+
+set -e
+
+CGALPHA_DIR="/home/vaclav/cgalpha_test"
+REPO_DIR="$CGALPHA_DIR"
+ENV_FILE="$REPO_DIR/.env"
+PYTHON="/home/vaclav/.pyenv/versions/3.11.9/bin/python3"
+
+# Load environment if exists
+if [ -f "$ENV_FILE" ]; then
+    set -a
+    source "$ENV_FILE"
+    set +a
+fi
+
+echo "=== CGAlpha TEST Full Restart ==="
+echo "Cloud backend: R2 (Cloudflare)"
+echo ""
+
+# Ensure rclone is in PATH
+export PATH="$HOME/bin:$PATH"
+
+if ! command -v rclone &>/dev/null; then
+    echo "--- Installing rclone ---"
+    curl -sL https://downloads.rclone.org/rclone-current-linux-amd64.zip -o /tmp/rclone.zip
+    unzip -j /tmp/rclone.zip "rclone-v*/rclone" -d ~/bin/
+    chmod +x ~/bin/rclone
+fi
+
+echo "--- rclone: $(rclone version 2>&1 | head -1) ---"
+
+# Configure cgalpha-r2 remote
+echo "--- Configuring cgalpha-r2 ---"
+rclone config delete cgalpha-r2 2>/dev/null || true
+
+R2_ENDPOINT="${R2_ENDPOINT:-https://025eecf772c35797f9aef9d18359e521.r2.cloudflarestorage.com}"
+R2_KEY_ID="${R2_ACCESS_KEY_ID:-d498edd635c3ee894993700637376906}"
+R2_SECRET="${R2_SECRET_ACCESS_KEY:-f9aebd0b4173905721cd741c46895670e1aab42531f4eb76aa18f7e6a7b72549}"
+
+rclone config create cgalpha-r2 s3 \
+    provider=Cloudflare \
+    access_key_id="$R2_KEY_ID" \
+    secret_access_key="$R2_SECRET" \
+    endpoint="$R2_ENDPOINT" \
+    skip_check_bucket=true
+
+echo "cgalpha-r2 remote created"
+
+# Verify R2 bucket access
+echo "--- Verifying R2 bucket access ---"
+R2_BUCKET="${R2_BUCKET:-cgalpha-data}"
+OBJECT_COUNT=$(rclone ls "cgalpha-r2:$R2_BUCKET/" 2>&1 | wc -l | tr -d ' ')
+echo "Objects in $R2_BUCKET: $OBJECT_COUNT"
+
+# Test write capability
+TEST_FILE="/tmp/cgalpha-restart-test-$$"
+echo "restart-cgalpha-test test $(date -Iseconds)" > "$TEST_FILE"
+if rclone copy "$TEST_FILE" "cgalpha-r2:$R2_BUCKET/.restart-test/test.json" 2>/dev/null; then
+    echo "Write test: OK"
+    rclone delete "cgalpha-r2:$R2_BUCKET/.restart-test/" 2>/dev/null || true
+else
+    echo "Write test: FAILED"
+fi
+rm -f "$TEST_FILE"
+
+# Remove B2 remote (retired)
+rclone config delete cgalpha-b2 2>/dev/null || true
+
+# Check CloudSync module
+echo "--- CGAlpha CloudSync module ---"
+cd "$REPO_DIR"
+if [ -f ".venv/bin/activate" ]; then
+    source .venv/bin/activate
+    python3 -c "from cgalpha_v3.cloud import CloudSync; s = CloudSync(); print('CloudSync status:', s.status())" 2>&1 || echo "CloudSync: import failed"
+else
+    echo "CloudSync: venv not found at .venv/bin/activate (skipping import test)"
+fi
+
+# ===== CGAlpha GUI + Watchdog Restart (per protocol) =====
+echo ""
+echo "=== CGAlpha GUI + Watchdog Restart ==="
+
+# PASO 2 — DETENER TODO
+echo "--- PASO 2: Stopping existing processes ---"
+pkill -9 -f harness_watchdog.py 2>/dev/null || true
+pkill -9 -f cgalpha_v3.gui.server 2>/dev/null || true
+pkill -9 -f launch_shadow_live.py 2>/dev/null || true
+sleep 3
+
+# Verify port is free
+if netstat -tlnp 2>/dev/null | grep -q 8080; then
+    echo "Port 8080 still occupied, forcing release..."
+    fuser -k 8080/tcp 2>/dev/null || true
+    sleep 2
+fi
+
+# PASO 3 — INICIAR GUI SERVER
+echo "--- PASO 3: Starting GUI Server ---"
+cd "$REPO_DIR"
+mkdir -p logs
+if [ -f ".venv/bin/activate" ]; then
+    source .venv/bin/activate
+fi
+PYTHONPATH=. nohup "$PYTHON" cgalpha_v3/gui/server.py > logs/gui_restart.log 2>&1 &
+GUI_PID=$!
+echo "GUI Server started (PID: $GUI_PID)"
+
+# Wait for GUI to initialize
+echo "Waiting 25 seconds for GUI to initialize..."
+sleep 25
+
+# PASO 4 — VERIFICAR GUI
+echo "--- PASO 4: Verifying GUI ---"
+HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1:8080/ 2>/dev/null || echo "000")
+if [ "$HTTP_CODE" != "200" ]; then
+    echo "GUI verification FAILED (HTTP $HTTP_CODE)"
+    echo "Last 30 lines of GUI log:"
+    tail -30 "$REPO_DIR/logs/gui_restart.log"
+    exit 1
+fi
+echo "GUI responding: HTTP 200"
+
+# PASO 5 — INICIAR WATCHDOG
+echo "--- PASO 5: Starting Watchdog ---"
+nohup "$PYTHON" harness_watchdog.py --daemon > logs/watchdog_restart.log 2>&1 &
+WATCHDOG_PID=$!
+echo "Watchdog started (PID: $WATCHDOG_PID)"
+
+# Wait for watchdog to initialize
+echo "Waiting 5 seconds for Watchdog to initialize..."
+sleep 5
+
+# PASO 5b — INICIAR SHADOW TRADER (Spot mode)
+echo "--- PASO 5b: Starting Shadow Trader (Spot) ---"
+# Unset GUI_READONLY so shadow trader writes active_zones.json
+unset CGALPHA_GUI_READONLY
+nohup "$PYTHON" cgalpha_v3/scripts/launch_shadow_live.py > logs/shadow_restart.log 2>&1 &
+SHADOW_PID=$!
+echo "Shadow Trader started (PID: $SHADOW_PID)"
+
+# Wait for shadow trader to initialize
+echo "Waiting 10 seconds for Shadow Trader to initialize..."
+sleep 10
+
+# PASO 6 — VERIFICACIÓN FINAL
+echo ""
+echo "=== PASO 6: Final Verification ==="
+
+echo "PROCESOS:"
+PROCESS_COUNT=$(ps aux | grep -E "python.*(cgalpha|harness)" | grep -v grep | wc -l)
+ps aux | grep -E "python.*(cgalpha|harness)" | grep -v grep
+echo "Count: $PROCESS_COUNT"
+
+echo ""
+echo "PUERTO:"
+PORT_COUNT=$(netstat -tlnp 2>/dev/null | grep 8080 | wc -l)
+netstat -tlnp 2>/dev/null | grep 8080
+echo "Count: $PORT_COUNT"
+
+echo ""
+echo "HEARTBEAT:"
+if [ -f "aipha_memory/operational/heartbeat_BTCUSDT.json" ]; then
+    cat aipha_memory/operational/heartbeat_BTCUSDT.json
+    HEARTBEAT_PRICE=$(python3 -c "import json; d=json.load(open('aipha_memory/operational/heartbeat_BTCUSDT.json')); print(int(d.get('last_price', 0)))" 2>/dev/null || echo 0)
+    HEARTBEAT_GAP=$(python3 -c "import json; d=json.load(open('aipha_memory/operational/heartbeat_BTCUSDT.json')); print(d.get('last_aggtrade_gap_ms', 999999))" 2>/dev/null || echo 999999)
+    echo "Price: $HEARTBEAT_PRICE"
+    echo "Gap (ms): $HEARTBEAT_GAP"
+else
+    echo "heartbeat_BTCUSDT.json NOT FOUND"
+    HEARTBEAT_PRICE=0
+    HEARTBEAT_GAP=999999
+fi
+
+echo ""
+echo "WATCHDOG LOG:"
+tail -3 logs/watchdog-systemd.log 2>/dev/null || tail -3 logs/watchdog_restart.log 2>/dev/null || echo "No watchdog log found"
+
+# Verify all criteria
+echo ""
+echo "=== VERIFICATION RESULTS ==="
+ALL_OK=true
+
+if [ "$PROCESS_COUNT" -eq 3 ]; then
+    echo "✓ Procesos: 3 (GUI + Watchdog + Shadow Trader)"
+else
+    echo "✗ Procesos: $PROCESS_COUNT (expected 3)"
+    ALL_OK=false
+fi
+
+if [ "$PORT_COUNT" -eq 1 ]; then
+    echo "✓ Puerto: 8080 LISTEN"
+else
+    echo "✗ Puerto: $PORT_COUNT (expected 1)"
+    ALL_OK=false
+fi
+
+if [ "$HEARTBEAT_PRICE" -gt 10000 ]; then
+    echo "✓ Heartbeat price: $HEARTBEAT_PRICE (> 10000)"
+else
+    echo "✗ Heartbeat price: $HEARTBEAT_PRICE (expected > 10000)"
+    ALL_OK=false
+fi
+
+if [ "$HEARTBEAT_GAP" -lt 30000 ]; then
+    echo "✓ Heartbeat gap: ${HEARTBEAT_GAP}ms (< 30000ms)"
+else
+    echo "✗ Heartbeat gap: ${HEARTBEAT_GAP}ms (expected < 30000ms)"
+    ALL_OK=false
+fi
+
+if tail -3 logs/watchdog-systemd.log 2>/dev/null | grep -q "Check result: OK" || tail -3 logs/watchdog_restart.log 2>/dev/null | grep -q "Check result: OK"; then
+    echo "✓ Watchdog: Check result: OK"
+else
+    echo "✗ Watchdog: 'Check result: OK' not found in logs"
+    ALL_OK=false
+fi
+
+echo ""
+if [ "$ALL_OK" = true ]; then
+    echo "=== CGAlpha TEST FULLY OPERATIONAL ==="
+else
+    echo "=== VERIFICATION FAILED - CHECK ABOVE ==="
+    exit 1
+fi
+
+echo ""
+echo "=== CGAlpha TEST Ready ==="
+echo "R2 remote: cgalpha-r2 → $R2_BUCKET"
+echo "DuckDB: local (embeddable)"
+echo "Supabase: https://fwuwhbwmzoextippjria.supabase.co"
+echo "GUI: http://127.0.0.1:8080/"
+echo "Watchdog: running (PID: $WATCHDOG_PID)"

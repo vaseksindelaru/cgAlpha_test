@@ -1231,10 +1231,23 @@ def get_market_pulse() -> ResponseReturnValue:
 @app.route("/api/live/signals", methods=["GET"])
 @require_auth
 def get_live_signals() -> ResponseReturnValue:
-    """Retorna señales consolidadas de todos los adaptadores activos (Fase 4.2)."""
+    """Retorna señales consolidadas del shadow trader (leído desde disco persistido)."""
+    import json
+    from pathlib import Path
+    
+    # project_root should be /home/vaclav/cgalpha_test (not /home/vaclav/cgalpha_test/cgalpha_v3)
+    project_root = Path(__file__).resolve().parent.parent.parent
     all_signals = []
-    for adapter in _adapters.values():
-        all_signals.extend(adapter.live_signals)
+    
+    # Read from persisted files written by shadow trader
+    signals_dir = project_root / "aipha_memory" / "operational"
+    for signals_file in signals_dir.glob("live_signals_*.json"):
+        try:
+            with open(signals_file) as f:
+                signals = json.load(f)
+                all_signals.extend(signals)
+        except (json.JSONDecodeError, OSError):
+            pass
 
     # Ordenar por tiempo descendente
     all_signals.sort(key=lambda x: x.get("timestamp", ""), reverse=True)
@@ -1243,7 +1256,7 @@ def get_live_signals() -> ResponseReturnValue:
         {
             "count": len(all_signals),
             "signals": all_signals[:50],
-            "status": "multi-asset",
+            "status": "shadow-trader",
         }
     )
 
