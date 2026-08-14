@@ -220,6 +220,59 @@ else
     ALL_OK=false
 fi
 
+# Verificar recolección de datos y zonas activas
+echo ""
+echo "DATA COLLECTION VERIFICATION:"
+
+# Active zones
+if [ -f "aipha_memory/operational/active_zones.json" ]; then
+    ACTIVE_ZONES=$(python3 -c "import json; d=json.load(open('aipha_memory/operational/active_zones.json')); print(len(d))" 2>/dev/null || echo 0)
+    if [ "$ACTIVE_ZONES" -gt 0 ]; then
+        echo "✓ Active zones: $ACTIVE_ZONES"
+    else
+        echo "⚠ Active zones: 0 (bootstrap puede tardar 1-2 min)"
+    fi
+else
+    echo "✗ active_zones.json NOT FOUND"
+    ALL_OK=false
+fi
+
+# Dataset growing
+if [ -f "aipha_memory/operational/training_dataset_v2.jsonl" ]; then
+    DATASET_LINES=$(wc -l < aipha_memory/operational/training_dataset_v2.jsonl 2>/dev/null || echo 0)
+    if [ "$DATASET_LINES" -gt 0 ]; then
+        echo "✓ Training dataset: $DATASET_LINES samples"
+    else
+        echo "⚠ Training dataset empty"
+    fi
+else
+    echo "✗ training_dataset_v2.jsonl NOT FOUND"
+fi
+
+# L2-forensics endpoint
+L2_ZONES=$(curl -m 3 -s -H "Authorization: Bearer $CGV3_AUTH_TOKEN" http://127.0.0.1:8080/api/l2-forensics/status 2>/dev/null | python3 -c "import json,sys; d=json.load(sys.stdin); print(len(d.get('active_zones',[])))" 2>/dev/null || echo "ERR")
+if [ "$L2_ZONES" != "ERR" ] && [ "$L2_ZONES" -ge 0 ]; then
+    echo "✓ L2-Forensics zones: $L2_ZONES"
+else
+    echo "⚠ L2-Forensics endpoint not ready"
+fi
+
+# Live signals
+LIVE_SIGNALS=$(curl -m 3 -s -H "Authorization: Bearer $CGV3_AUTH_TOKEN" http://127.0.0.1:8080/api/live/signals 2>/dev/null | python3 -c "import json,sys; d=json.load(sys.stdin); print(d.get('count',0))" 2>/dev/null || echo "ERR")
+if [ "$LIVE_SIGNALS" != "ERR" ]; then
+    echo "✓ Live signals endpoint: $LIVE_SIGNALS signals"
+else
+    echo "⚠ Live signals endpoint not ready"
+fi
+
+# WebSocket connected check
+WS_CONNECTED=$(grep -c "Conectado a Binance WS" logs/shadow_restart.log 2>/dev/null || echo 0)
+if [ "$WS_CONNECTED" -gt 0 ]; then
+    echo "✓ WebSocket SPOT: Connected ($WS_CONNECTED)"
+else
+    echo "⚠ WebSocket connection not confirmed in logs"
+fi
+
 echo ""
 if [ "$ALL_OK" = true ]; then
     echo "=== CGAlpha TEST FULLY OPERATIONAL ==="
