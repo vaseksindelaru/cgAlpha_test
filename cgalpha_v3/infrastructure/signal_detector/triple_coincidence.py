@@ -755,7 +755,7 @@ class TripleCoincidenceDetector:
             "min_trend_length": 5,
             "zigzag_threshold": 0.0018,  # 0.18% — P75 rango real vela 5m BTCUSDT
             "proximity_tolerance": 8,
-            "retest_timeout_bars": 50,
+            "retest_timeout_bars": 200,
             "outcome_lookahead_bars": 10,
             "breakout_confirm_atr_buffer": 0.03,
             "volume_z_threshold": 0.5,
