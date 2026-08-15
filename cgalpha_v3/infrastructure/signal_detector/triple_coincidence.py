@@ -755,7 +755,7 @@ class TripleCoincidenceDetector:
             "min_trend_length": 5,
             "zigzag_threshold": 0.0018,  # 0.18% — P75 rango real vela 5m BTCUSDT
             "proximity_tolerance": 8,
-            "retest_timeout_bars": 200,
+            "retest_timeout_bars": 288,
             "outcome_lookahead_bars": 10,
             "breakout_confirm_atr_buffer": 0.03,
             "volume_z_threshold": 0.5,
@@ -1653,6 +1653,11 @@ class TripleCoincidenceDetector:
         # Detect new zones at this candle
         new_zones = self._detect_new_zones(df, current_idx, precomputed_trends)
 
+        if new_zones:
+            logger.info(
+                f"🔍 NUEVAS ZONAS detectadas: {len(new_zones)} en idx={current_idx} "
+                f"buffer={len(self._kline_buffer)} active={len(self.active_zones)}"
+            )
         self._add_zones_without_duplicates(new_zones)
 
         # ── Z-Score Calibration Instrumentation (Cat.1, observacional) ──
