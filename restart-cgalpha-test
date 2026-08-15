@@ -273,6 +273,54 @@ else
     echo "⚠ WebSocket connection not confirmed in logs"
 fi
 
+# Cloudflare R2 connectivity
+echo ""
+echo "CLOUD STORAGE VERIFICATION:"
+R2_TEST_FILE="/tmp/cgalpha-r2-test-$$"
+echo "r2-test-$(date -Iseconds)" > "$R2_TEST_FILE"
+if rclone copy "$R2_TEST_FILE" "cgalpha-r2:$R2_BUCKET/.restart-test/test.json" 2>/dev/null; then
+    echo "✓ Cloudflare R2: Write OK"
+    rclone delete "cgalpha-r2:$R2_BUCKET/.restart-test/" 2>/dev/null || true
+else
+    echo "✗ Cloudflare R2: Write FAILED"
+    ALL_OK=false
+fi
+rm -f "$R2_TEST_FILE"
+
+# Supabase connectivity (optional - check if configured)
+if [ -n "$SUPABASE_URL" ] && [ -n "$SUPABASE_KEY" ]; then
+    SB_CHECK=$(curl -m 3 -s -o /dev/null -w "%{http_code}" -H "apikey: $SUPABASE_KEY" "$SUPABASE_URL/rest/v1/" 2>/dev/null || echo "000")
+    if [ "$SB_CHECK" = "200" ]; then
+        echo "✓ Supabase: Connected"
+    else
+        echo "⚠ Supabase: HTTP $SB_CHECK"
+    fi
+else
+    echo "⚠ Supabase: Not configured (SUPABASE_URL/SUPABASE_KEY not set)"
+fi
+
+# Model files existence
+echo ""
+echo "MODEL VERIFICATION:"
+if [ -f "aipha_memory/data/models/oracle_v5.joblib" ]; then
+    echo "✓ Oracle model: oracle_v5.joblib found"
+else
+    echo "⚠ Oracle model: oracle_v5.joblib NOT found (using placeholder)"
+fi
+if [ -f "aipha_memory/data/models/oracle_mae_v1.joblib" ]; then
+    echo "✓ MAE Regressor: oracle_mae_v1.joblib found"
+else
+    echo "⚠ MAE Regressor: oracle_mae_v1.joblib NOT found (using placeholder)"
+fi
+
+# Disk space
+DISK_AVAIL=$(df -h . | awk 'NR==2 {print $4}' | sed 's/G.*//')
+if [ -n "$DISK_AVAIL" ] && [ "${DISK_AVAIL%.*}" -gt 1 ]; then
+    echo "✓ Disk space: ${DISK_AVAIL}G available"
+else
+    echo "⚠ Disk space: Low (${DISK_AVAIL}G)"
+fi
+
 echo ""
 if [ "$ALL_OK" = true ]; then
     echo "=== CGAlpha TEST FULLY OPERATIONAL ==="
