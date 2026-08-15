@@ -227,6 +227,8 @@ class KeyCandleDetector:
         }
         self.config = {**defaults, **(config or {})}
         self.data = None
+        # Symbol for z-score logging (observational, no behavior change)
+        self._symbol = self.config.get("symbol", "BTCUSDT")
 
     def load_data(self, data: pd.DataFrame):
         """Carga datos OHLCV."""
@@ -251,6 +253,30 @@ class KeyCandleDetector:
 
         # Z-Score local (evita rigidez de percentiles globales)
         z_score = (current_vol - mean_vol) / std_vol if std_vol > 0 else 0
+
+        # Get current candle for timestamp
+        current = self.data.iloc[index]
+
+        # ── OBSERVATIONAL LOGGING: z-score de volumen para calibración ─────────
+        # Zero behavior impact: logs for EVERY candle evaluated, regardless of
+        # is_high_vol outcome. No conditional guards.
+        try:
+            import json
+            from pathlib import Path
+
+            ts_ms = int(current.get("open_time", 0))
+            log_entry = {
+                "ts": ts_ms,
+                "symbol": self._symbol,
+                "z_score": float(z_score),
+            }
+            log_path = Path(__file__).resolve().parent.parent.parent / "data" / "volume_zscore_observations.jsonl"
+            log_path.parent.mkdir(parents=True, exist_ok=True)
+            with open(log_path, "a", encoding="utf-8") as f:
+                f.write(json.dumps(log_entry, ensure_ascii=False) + "\n")
+        except Exception:
+            # Never let logging break detection logic
+            pass
 
         # Umbral configurable (default 0.5 para capturar velas como las 06:10)
         # Nota: En v3 se usa volume_percentile_threshold de forma legacy si no hay z_threshold

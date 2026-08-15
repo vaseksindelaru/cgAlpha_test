@@ -1,1 +1,26 @@
-[]
+[
+  {
+    "zone_id": "231_bullish",
+    "direction": "bullish",
+    "effective_direction": "bullish",
+    "original_direction": "bullish",
+    "polarity_flipped": false,
+    "state": "active",
+    "zone_top": 63030.0,
+    "zone_bottom": 62920.0,
+    "touches": 1,
+    "created_at": 1786774940128
+  },
+  {
+    "zone_id": "262_bullish",
+    "direction": "bullish",
+    "effective_direction": "bullish",
+    "original_direction": "bullish",
+    "polarity_flipped": false,
+    "state": "active",
+    "zone_top": 62920.0,
+    "zone_bottom": 62816.96,
+    "touches": 1,
+    "created_at": 1786774940128
+  }
+]
