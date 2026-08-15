@@ -58,8 +58,9 @@
         "reason": "Candle distance for spatial coincidence matching."
       },
       "retest_timeout_bars": {
-        "min": 10, "max": 200, "type": "int",
-        "reason": "Max wait for retest. Too short misses retests; too long wastes memory."
+        "min": 10, "max": 288, "type": "int",
+        "reason": "Max wait for retest. Too short misses retests; too long wastes memory.",
+        "evolution_category": 3
       },
       "outcome_lookahead_bars": {
         "min": 3, "max": 50, "type": "int",
