@@ -229,6 +229,8 @@ class KeyCandleDetector:
         self.data = None
         # Symbol for z-score logging (observational, no behavior change)
         self._symbol = self.config.get("symbol", "BTCUSDT")
+        # Idempotent logging: track logged candles (symbol, interval, candle_open_ts)
+        self._logged_candles: set = set()
 
     def load_data(self, data: pd.DataFrame):
         """Carga datos OHLCV."""
@@ -258,22 +260,26 @@ class KeyCandleDetector:
         current = self.data.iloc[index]
 
         # ── OBSERVATIONAL LOGGING: z-score de volumen para calibración ─────────
-        # Zero behavior impact: logs for EVERY candle evaluated, regardless of
-        # is_high_vol outcome. No conditional guards.
+        # Idempotent: logs ONCE per closed candle (symbol, interval, candle_open_ts)
+        # Zero behavior impact: no conditional guards on is_high_vol.
         try:
             import json
             from pathlib import Path
 
             ts_ms = int(current.get("open_time", 0))
-            log_entry = {
-                "ts": ts_ms,
-                "symbol": self._symbol,
-                "z_score": float(z_score),
-            }
-            log_path = Path(__file__).resolve().parent.parent.parent / "data" / "volume_zscore_observations.jsonl"
-            log_path.parent.mkdir(parents=True, exist_ok=True)
-            with open(log_path, "a", encoding="utf-8") as f:
-                f.write(json.dumps(log_entry, ensure_ascii=False) + "\n")
+            log_key = (self._symbol, "5m", ts_ms)
+            if log_key not in self._logged_candles:
+                self._logged_candles.add(log_key)
+                log_entry = {
+                    "ts": ts_ms,
+                    "symbol": self._symbol,
+                    "interval": "5m",
+                    "z_score": float(z_score),
+                }
+                log_path = Path(__file__).resolve().parent.parent.parent / "data" / "volume_zscore_observations.jsonl"
+                log_path.parent.mkdir(parents=True, exist_ok=True)
+                with open(log_path, "a", encoding="utf-8") as f:
+                    f.write(json.dumps(log_entry, ensure_ascii=False) + "\n")
         except Exception:
             # Never let logging break detection logic
             pass
