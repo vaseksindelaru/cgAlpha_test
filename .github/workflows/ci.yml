@@ -1,0 +1,31 @@
+name: CI
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+    branches: ["**"]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: |
+          pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install pytest pytest-mock
+
+      - name: Run unit tests
+        run: |
+          unset PYTHONPATH
+          python -m pytest -q -o addopts='' \
+            cgalpha_v3/tests/test_signal_detector_integration.py \
+            cgalpha_v3/tests/test_safety_envelope.py \
+            cgalpha_v3/tests/test_restart_script_isolation.py

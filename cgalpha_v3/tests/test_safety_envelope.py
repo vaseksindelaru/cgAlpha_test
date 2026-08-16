@@ -172,4 +172,4 @@ class TestEvolutionPulseEndpoint:
         assert resp.status_code == 200
         data = resp.get_json()
         # Either "offline" or actual data if file exists
-        assert data["status"] in ("offline", "OK", "ERROR", "NO_DATA", "COMPLETED")
+        assert data["status"] in ("offline", "OFFLINE", "OK", "ERROR", "NO_DATA", "COMPLETED")

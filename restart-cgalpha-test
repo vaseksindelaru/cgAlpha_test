@@ -38,8 +38,10 @@ echo "--- Configuring cgalpha-r2 ---"
 rclone config delete cgalpha-r2 2>/dev/null || true
 
 R2_ENDPOINT="${R2_ENDPOINT:-https://025eecf772c35797f9aef9d18359e521.r2.cloudflarestorage.com}"
-R2_KEY_ID="${R2_ACCESS_KEY_ID:-d498edd635c3ee894993700637376906}"
-R2_SECRET="${R2_SECRET_ACCESS_KEY:-f9aebd0b4173905721cd741c46895670e1aab42531f4eb76aa18f7e6a7b72549}"
+: "${R2_ACCESS_KEY_ID:?R2_ACCESS_KEY_ID must be set in the environment or .env}"
+: "${R2_SECRET_ACCESS_KEY:?R2_SECRET_ACCESS_KEY must be set in the environment or .env}"
+R2_KEY_ID="$R2_ACCESS_KEY_ID"
+R2_SECRET="$R2_SECRET_ACCESS_KEY"
 
 rclone config create cgalpha-r2 s3 \
     provider=Cloudflare \
@@ -84,22 +86,41 @@ fi
 echo ""
 echo "=== CGAlpha GUI + Watchdog Restart ==="
 
-# PASO 2 — DETENER TODO
-echo "--- PASO 2: Stopping existing processes ---"
-pkill -9 -f harness_watchdog.py 2>/dev/null || true
-pkill -9 -f cgalpha_v3.gui.server 2>/dev/null || true
-pkill -9 -f launch_shadow_live.py 2>/dev/null || true
-# Also kill any python processes in the other repo that might interfere
-pkill -9 -f "CGAlpha_0.0.1-Aipha_0.0.3.*harness_watchdog" 2>/dev/null || true
-pkill -9 -f "CGAlpha_0.0.1-Aipha_0.0.3.*cgalpha_v3.gui.server" 2>/dev/null || true
-pkill -9 -f "CGAlpha_0.0.1-Aipha_0.0.3.*launch_shadow_live" 2>/dev/null || true
-sleep 3
+# PASO 2 — DETENER SOLO PROCESOS DEL ENTORNO TEST
+# SDT invariant: restarting TEST must never stop processes whose cwd belongs
+# to the main/PROD repository.
+stop_repo_processes() {
+    local signal="$1"
+    local pid cwd cmd
 
-# Verify port is free
-if netstat -tlnp 2>/dev/null | grep -q 8080; then
-    echo "Port 8080 still occupied, forcing release..."
-    fuser -k 8080/tcp 2>/dev/null || true
-    sleep 2
+    for pid in /proc/[0-9]*; do
+        pid="${pid##*/}"
+        [ -r "/proc/$pid/cmdline" ] || continue
+        cmd=$(tr '\0' ' ' < "/proc/$pid/cmdline" 2>/dev/null || true)
+        case "$cmd" in
+            *harness_watchdog.py*|*cgalpha_v3/gui/server.py*|*cgalpha_v3.gui.server*|*launch_shadow_live.py*) ;;
+            *) continue ;;
+        esac
+
+        [ -L "/proc/$pid/cwd" ] || continue
+        cwd=$(readlink "/proc/$pid/cwd" 2>/dev/null || true)
+        if [ "$cwd" = "$REPO_DIR" ]; then
+            kill "-$signal" "$pid" 2>/dev/null || true
+        fi
+    done
+}
+
+echo "--- PASO 2: Stopping existing TEST processes only ---"
+stop_repo_processes TERM
+sleep 3
+stop_repo_processes KILL
+sleep 1
+
+# Port ownership is a deployment boundary. Never kill an unknown listener.
+if netstat -tlnp 2>/dev/null | grep -q ':8080 '; then
+    echo "Port 8080 is occupied after stopping TEST processes. Refusing to kill an unowned listener."
+    netstat -tlnp 2>/dev/null | grep ':8080 ' || true
+    exit 1
 fi
 
 # PASO 3 — INICIAR GUI SERVER
