@@ -89,6 +89,10 @@ echo "--- PASO 2: Stopping existing processes ---"
 pkill -9 -f harness_watchdog.py 2>/dev/null || true
 pkill -9 -f cgalpha_v3.gui.server 2>/dev/null || true
 pkill -9 -f launch_shadow_live.py 2>/dev/null || true
+# Also kill any python processes in the other repo that might interfere
+pkill -9 -f "CGAlpha_0.0.1-Aipha_0.0.3.*harness_watchdog" 2>/dev/null || true
+pkill -9 -f "CGAlpha_0.0.1-Aipha_0.0.3.*cgalpha_v3.gui.server" 2>/dev/null || true
+pkill -9 -f "CGAlpha_0.0.1-Aipha_0.0.3.*launch_shadow_live" 2>/dev/null || true
 sleep 3
 
 # Verify port is free
@@ -109,20 +113,26 @@ PYTHONPATH=. nohup "$PYTHON" cgalpha_v3/gui/server.py > logs/gui_restart.log 2>&
 GUI_PID=$!
 echo "GUI Server started (PID: $GUI_PID)"
 
-# Wait for GUI to initialize
-echo "Waiting 25 seconds for GUI to initialize..."
-sleep 25
+# Wait for GUI to initialize with retries
+echo "Waiting for GUI to initialize (up to 60 seconds)..."
+MAX_WAIT=60
+WAITED=0
+while [ $WAITED -lt $MAX_WAIT ]; do
+    HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1:8080/ 2>/dev/null || echo "000")
+    if [ "$HTTP_CODE" = "200" ]; then
+        echo "GUI responding: HTTP 200"
+        break
+    fi
+    sleep 5
+    WAITED=$((WAITED + 5))
+done
 
-# PASO 4 — VERIFICAR GUI
-echo "--- PASO 4: Verifying GUI ---"
-HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1:8080/ 2>/dev/null || echo "000")
-if [ "$HTTP_CODE" != "200" ]; then
-    echo "GUI verification FAILED (HTTP $HTTP_CODE)"
+if [ "$WAITED" -ge $MAX_WAIT ]; then
+    echo "GUI verification FAILED (timeout after ${MAX_WAIT}s)"
     echo "Last 30 lines of GUI log:"
     tail -30 "$REPO_DIR/logs/gui_restart.log"
     exit 1
 fi
-echo "GUI responding: HTTP 200"
 
 # PASO 5 — INICIAR WATCHDOG
 echo "--- PASO 5: Starting Watchdog ---"
@@ -151,9 +161,14 @@ echo ""
 echo "=== PASO 6: Final Verification ==="
 
 echo "PROCESOS:"
-# Only count processes from THIS repo (cgalpha_test)
-PROCESS_COUNT=$(ps aux | grep "cgalpha_test" | grep -E "python.*(cgalpha|harness)" | grep -v grep | wc -l)
-ps aux | grep "cgalpha_test" | grep -E "python.*(cgalpha|harness)" | grep -v grep
+# Only count processes from THIS repo (cgalpha_test) - check cwd
+PROCESS_COUNT=0
+for pid in $(ps aux | grep -E "cgalpha_v3|harness_watchdog" | grep -v grep | awk '{print $2}'); do
+    if [ -L "/proc/$pid/cwd" ] && [ "$(readlink /proc/$pid/cwd)" = "/home/vaclav/cgalpha_test" ]; then
+        PROCESS_COUNT=$((PROCESS_COUNT + 1))
+    fi
+done
+ps aux | grep -E "cgalpha_v3|harness_watchdog" | grep -E "python.*(cgalpha|harness)" | grep -v grep
 echo "Count: $PROCESS_COUNT"
 
 echo ""
@@ -266,8 +281,8 @@ else
 fi
 
 # WebSocket connected check
-WS_CONNECTED=$(grep -c "Conectado a Binance WS" logs/shadow_restart.log 2>/dev/null || echo 0)
-if [ "$WS_CONNECTED" -gt 0 ]; then
+WS_CONNECTED=$(grep -c "Conectado a Binance WS" logs/shadow_restart.log 2>/dev/null | head -1 | tr -d '\n' || echo 0)
+if [ "$WS_CONNECTED" -gt 0 ] 2>/dev/null; then
     echo "✓ WebSocket SPOT: Connected ($WS_CONNECTED)"
 else
     echo "⚠ WebSocket connection not confirmed in logs"
