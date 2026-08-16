@@ -9,7 +9,7 @@
     "zone_top": 63030.0,
     "zone_bottom": 62920.0,
     "touches": 1,
-    "created_at": 1786774940128
+    "created_at": 1786840691900
   },
   {
     "zone_id": "262_bullish",
@@ -21,6 +21,18 @@
     "zone_top": 62920.0,
     "zone_bottom": 62816.96,
     "touches": 1,
-    "created_at": 1786774940128
+    "created_at": 1786840691900
+  },
+  {
+    "zone_id": "49_bullish",
+    "direction": "bullish",
+    "effective_direction": "bullish",
+    "original_direction": "bullish",
+    "polarity_flipped": false,
+    "state": "active",
+    "zone_top": 62841.37,
+    "zone_bottom": 62739.98,
+    "touches": 0,
+    "created_at": 1786840691900
   }
 ]
