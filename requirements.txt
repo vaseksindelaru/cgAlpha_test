@@ -24,6 +24,10 @@ python-dotenv>=0.21.0
 # System & Utilities
 psutil>=5.8.0
 
+# Web Framework (GUI server)
+flask>=2.0.0
+websockets>=10.0
+
 # Infrastructure (Redis cache & queues)
 redis>=5.0.0
 
