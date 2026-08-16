@@ -8,6 +8,9 @@ jobs:
   test:
     runs-on: [self-hosted, cgalpha-test-runner]
 
+    env:
+      PATH: /home/vaclav/.local/bin:/home/vaclav/bin:/home/vaclav/.pyenv/versions/3.11.9/bin:${{ env.PATH }}
+
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
